@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f2233">
+<title>Andijon uylari</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+html,body{margin:0;height:100%;background:#0f2233;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+#map{position:absolute;inset:0;background:linear-gradient(#1a2548 0%,#ef9f5a 32%,#162619 33%)}
+.brand,.count{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);background:#0f2233;color:#fff;border-radius:12px;padding:8px 12px;font-weight:700;font-size:14px;z-index:5}
+.brand{left:10px}
+.count{right:10px;text-align:right}
+.count small{display:block;font-size:10px;font-weight:600;color:#9fb0c9}
+.count b{font-size:20px}
+.card,.sheet{position:absolute;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);max-width:420px;background:#0f2233;color:#fff;border-radius:16px;padding:12px;z-index:5}
+.card p{margin:0 0 8px;font-size:14px;font-weight:700}
+.row{display:flex;gap:8px}
+.row input{flex:1;min-width:0;font-size:16px;padding:11px 12px;border-radius:10px;border:1px solid #2b405e;background:#18283f;color:#fff}
+.row button{font-size:15px;font-weight:800;padding:0 14px;border:0;border-radius:10px;background:#ffc21a;color:#1a1a1a}
+#msg{min-height:18px;margin-top:8px;font-size:13px;color:#9fb0c9}
+.sheet{display:none;z-index:8;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.sheet.on{display:block}
+.sheet-on .card{display:none}
+.sheet h3{margin:0 0 4px;font-size:17px}
+.sheet .sub{font-size:13px;color:#9fb0c9;margin-bottom:10px}
+.badge{display:inline-block;padding:2px 9px;border-radius:8px;font-size:12px;font-weight:800;margin-bottom:8px}
+.b-sold{background:#e0462f;color:#fff}.b-free{background:#2ec4a6;color:#04342c}.b-wait{background:#9fb0c9;color:#0f2233}
+.x{position:absolute;right:10px;top:6px;background:none;border:0;color:#9fb0c9;font-size:26px;line-height:1}
+.btn{width:100%;font-size:15px;font-weight:800;padding:12px;border:0;border-radius:10px;background:#ffc21a;color:#1a1a1a;margin-top:6px}
+.btn.alt{background:#18283f;color:#fff;border:1px solid #2b405e}
+.cardnum{font-size:20px;font-weight:800;letter-spacing:1px;background:#18283f;border-radius:10px;padding:8px 10px;margin:6px 0;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.inp{width:100%;box-sizing:border-box;font-size:16px;padding:11px 12px;border-radius:10px;border:1px solid #2b405e;background:#18283f;color:#fff;margin-bottom:6px}
+.pill{background:#fff;color:#1d2b1a;border-radius:10px;padding:2px 7px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer}
+.pill.shop{background:#ffc21a}
+.pill.vip{background:#ffd700}
+.pill.wait{opacity:.6}
+.pill.diamond{background:#7fe3ff;color:#02344a;box-shadow:0 0 8px #7fe3ff}
+.plan{display:flex;justify-content:space-between;align-items:center;text-align:left}
+.plan span{font-weight:600;font-size:13px}
+.plan.p-vip{background:#ffd700}
+.plan.p-diamond{background:#7fe3ff}
+.plan.p-uy{background:#fff}
+.pill.me{background:#2ec4a6;color:#04342c;transform:scale(1.25)}
+.maplibregl-ctrl-bottom-right{bottom:150px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="brand">Andijon uylari</div>
+<div class="count"><small>AHOLI</small><b id="cnt">0</b></div>
+<div class="card">
+<p>Uyingizni xaritadan toping</p>
+<div class="row"><input id="q" type="text" placeholder="Ko’cha, mahalla yoki nik" autocomplete="off" autocapitalize="off" aria-label="Qidirish"><button id="go" type="button">Qidirish</button></div>
+<div id="msg">Qidiring yoki xaritani surib, uyingizni bosing.</div>
+</div>
+<div class="sheet" id="sheet"></div>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+var CFG=window.APP_CONFIG||{};
+var SUPABASE_URL=CFG.url||"",SUPABASE_KEY=CFG.key||"";
+var CARD=CFG.card||"",OWNER=CFG.owner||"";
+var INSTA=String(CFG.insta||"").replace(/^@/,"").replace(/[^a-zA-Z0-9._]/g,"");
+function money(n){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g," ")}
+var OK=!!SUPABASE_URL&&!!SUPABASE_KEY&&SUPABASE_KEY.indexOf("PASTE")<0;
+var CENTER=[72.3442,40.7821];
+var TUR={uy:"Oddiy uy",dokon:"Do’kon",vip:"VIP uy",diamond:"Diamond uy",kutilmoqda:"Kutilmoqda"};
+var PLANS=[{k:"uy",name:"Oddiy",min:5000,max:6000},{k:"vip",name:"VIP",min:11000,max:12000},{k:"diamond",name:"Diamond",min:18000,max:19000}];
+function planOf(summa){for(var i=0;i<PLANS.length;i++){if(summa>=PLANS[i].min&&summa<=PLANS[i].max)return PLANS[i]}return null}
+
+var users={},markers=[],ROWS=[];
+var H={apikey:SUPABASE_KEY,"Content-Type":"application/json"};
+if(SUPABASE_KEY.indexOf("eyJ")===0)H.Authorization="Bearer "+SUPABASE_KEY;
+var $=function(id){return document.getElementById(id)};
+function msg(t){$("msg").textContent=t}
+function clean(v){return v.trim().toLowerCase().replace(/^@/,"").replace(/\s+/g,"")}
+function key(lng,lat){return lng.toFixed(5)+","+lat.toFixed(5)}
+function esc(t){return String(t).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+
+if(typeof maplibregl==="undefined"){msg("Xarita yuklanmadi. Sayt internetga joylangach ishlaydi.");throw new Error("maplibre yuklanmadi")}
+function winImg(wall){
+var cv=document.createElement("canvas");cv.width=64;cv.height=64;
+var x=cv.getContext("2d");
+x.fillStyle=wall;x.fillRect(0,0,64,64);
+var pos=[[8,7],[36,7],[8,35],[36,35]],cl=["#ffd36b","#ffc04d","#ffe08a","#ffb84a"];
+pos.forEach(function(p,i){x.fillStyle=cl[i];x.fillRect(p[0],p[1],20,22);x.fillStyle="rgba(255,255,255,.4)";x.fillRect(p[0],p[1],20,3)});
+return x.getImageData(0,0,64,64);
+}
+var WALL={"win-uy":"#d9cfb4","win-vip":"#e4cf8a","win-diamond":"#a9dcea"};
+var TIER={uy:{h:6,roof:"#b5483a"},vip:{h:9,roof:"#d9a21b"},diamond:{h:13,roof:"#3ec6e0"},dokon:{h:6,roof:"#ffc21a"}};
+
+function plain(st){
+var vs=null;
+Object.keys(st.sources).forEach(function(k){if(!vs&&st.sources[k].type==="vector")vs=k});
+st.sources.sold={type:"geojson",data:{type:"FeatureCollection",features:[]}};
+st.layers=[{id:"bg",type:"background",paint:{"background-color":"#162619"}}];
+if(vs)st.layers.push({id:"plots",type:"fill",source:vs,"source-layer":"building",minzoom:13,paint:{"fill-color":"#4b8b52","fill-outline-color":"#2c5a33"}});
+st.layers.push({id:"yard",type:"fill",source:"sold",filter:["==",["get","k"],"yard"],paint:{"fill-color":"#6bb273"}});
+st.layers.push({id:"pend",type:"fill",source:"sold",filter:["==",["get","k"],"pend"],paint:{"fill-color":"#e0a63c"}});
+["uy","vip","diamond"].forEach(function(t){
+st.layers.push({id:"body-"+t,type:"fill-extrusion",source:"sold",filter:["all",["==",["get","k"],"body"],["==",["get","t"],t]],paint:{"fill-extrusion-pattern":"win-"+t,"fill-extrusion-height":["get","h"],"fill-extrusion-base":0}});
+});
+st.layers.push({id:"roof",type:"fill-extrusion",source:"sold",filter:["==",["get","k"],"roof"],paint:{"fill-extrusion-color":["get","c"],"fill-extrusion-height":["get","h"],"fill-extrusion-base":["get","b"]}});
+return st;
+}
+
+var map=new maplibregl.Map({container:"map",style:{version:8,sources:{},layers:[]},center:CENTER,zoom:15.6,pitch:60,bearing:-20,maxPitch:75});
+map.on("styleimagemissing",function(e){if(WALL[e.id]&&!map.hasImage(e.id))map.addImage(e.id,winImg(WALL[e.id]))});
+map.setStyle("https://tiles.openfreemap.org/styles/liberty",{diff:false,transformStyle:function(prev,next){return plain(next)}});
+map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"bottom-right");
+map.addControl(new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},fitBoundsOptions:{maxZoom:18},trackUserLocation:false,showUserLocation:true}),"bottom-right");
+
+map.on("load",function(){
+load();
+setInterval(load,60000);
+});
+var soldReady=false;
+map.on("styledata",function(){
+if(!soldReady&&map.getSource("sold")){soldReady=true;drawSold()}
+});
+
+function poly(ring,props){return{type:"Feature",properties:props,geometry:{type:"Polygon",coordinates:[ring]}}}
+function sc(ring,c,k){return ring.map(function(p){return[c.lng+(p[0]-c.lng)*k,c.lat+(p[1]-c.lat)*k]})}
+function drawSold(){
+var src=map.getSource("sold");
+if(!src)return;
+var fs=[];
+ROWS.forEach(function(r){
+var ring=r.geom;
+if(typeof ring==="string"){try{ring=JSON.parse(ring)}catch(e){ring=null}}
+if(!ring||ring.length<4)return;
+var f=ring[0],l=ring[ring.length-1];
+if(f[0]!==l[0]||f[1]!==l[1])ring=ring.concat([f]);
+var c={lng:r.lng,lat:r.lat};
+if(r.tur==="kutilmoqda"){fs.push(poly(ring,{k:"pend"}));return}
+var t=TIER[r.tur]||TIER.uy;
+var wt=(r.tur==="vip"||r.tur==="diamond")?r.tur:"uy";
+fs.push(poly(ring,{k:"yard"}));
+fs.push(poly(sc(ring,c,0.7),{k:"body",t:wt,h:t.h,nik:r.nik}));
+[[0.7,0,1],[0.5,1,2],[0.28,2,3]].forEach(function(q){
+fs.push(poly(sc(ring,c,q[0]),{k:"roof",b:t.h+q[1],h:t.h+q[2],c:t.roof,nik:r.nik}));
+});
+});
+src.setData({type:"FeatureCollection",features:fs});
+}
+
+function updateCount(){
+var n=Object.keys(users).filter(function(k){return users[k].tur!=="kutilmoqda"}).length;
+$("cnt").textContent=n;
+}
+
+function load(){
+if(!OK){msg("Sayt hali sozlanmagan: config.js ni tekshiring.");return Promise.resolve()}
+var old=new Date(Date.now()-31*60000).toISOString();
+return fetch(SUPABASE_URL+"/rest/v1/uylar?tur=eq.kutilmoqda&sana=lt."+encodeURIComponent(old),{method:"DELETE",headers:H}).catch(function(){})
+.then(function(){return fetch(SUPABASE_URL+"/rest/v1/uylar?select=nik,lng,lat,tur,summa,geom&order=id.asc&limit=1500",{headers:H})})
+.then(function(r){return r.json()})
+.then(function(rows){
+if(!Array.isArray(rows))return;
+ROWS=rows;
+markers.forEach(function(m){m.remove()});
+markers=[];users={};
+rows.forEach(add);
+updateCount();
+drawSold();
+}).catch(function(){msg("Ulanishda xato. Keyinroq urinib ko’ring.")});
+}
+
+function add(r){
+var el=document.createElement("div");
+var cls={dokon:" shop",vip:" vip",diamond:" diamond",kutilmoqda:" wait"}[r.tur]||"";
+el.className="pill"+cls;
+el.textContent=r.nik;
+el.addEventListener("click",function(ev){ev.stopPropagation();showSold(r.nik)});
+var m=new maplibregl.Marker({element:el,anchor:"bottom"}).setLngLat([r.lng,r.lat]).addTo(map);
+markers.push(m);
+users[r.nik]={lng:r.lng,lat:r.lat,tur:r.tur,summa:r.summa,el:el};
+}
+
+function fly(u){
+Object.keys(users).forEach(function(k){users[k].el.classList.remove("me")});
+u.el.classList.add("me");
+map.flyTo({center:[u.lng,u.lat],zoom:18.2,pitch:65,speed:0.8});
+}
+
+function center(g){
+var ring=null;
+if(g.type==="Polygon")ring=g.coordinates[0];
+else if(g.type==="MultiPolygon")ring=g.coordinates[0][0];
+if(!ring)return null;
+var a=1e9,b=1e9,c=-1e9,d=-1e9;
+ring.forEach(function(p){a=Math.min(a,p[0]);c=Math.max(c,p[0]);b=Math.min(b,p[1]);d=Math.max(d,p[1])});
+return{lng:(a+c)/2,lat:(b+d)/2,m2:(c-a)*(d-b)*9.3e9,ring:ring.map(function(p){return[Math.round(p[0]*1e6)/1e6,Math.round(p[1]*1e6)/1e6]})};
+}
+
+function near(lng,lat){
+var ks=Object.keys(users);
+for(var i=0;i<ks.length;i++){
+var u=users[ks[i]],dx=(lng-u.lng)*84000,dy=(lat-u.lat)*111000;
+if(dx*dx+dy*dy<225)return ks[i];
+}
+return null;
+}
+
+function sheet(html){
+var s=$("sheet");
+s.innerHTML='<button class="x" id="xx" type="button" aria-label="Yopish">×</button>'+html;
+s.classList.add("on");
+document.body.classList.add("sheet-on");
+$("xx").onclick=closeSheet;
+}
+function closeSheet(){
+$("sheet").classList.remove("on");
+document.body.classList.remove("sheet-on");
+}
+
+function showSold(nik){
+var u=users[nik];
+if(!u)return;
+if(u.tur==="kutilmoqda"){
+sheet('<span class="badge b-wait">Band qilingan</span><h3>@'+esc(nik)+'</h3><div class="sub">To’lov tekshirilmoqda.</div>');
+return;
+}
+sheet('<span class="badge b-sold">Sotilgan</span><h3>@'+esc(nik)+'</h3><div class="sub">'+esc(TUR[u.tur]||"Uy")+'</div>');
+}
+
+function showFree(c){
+if(c.m2<15||c.m2>800){sheet('<span class="badge b-wait">Sotuvda emas</span><h3>Bu bino uy emas</h3><div class="sub">Oddiy uy-joylarni tanlang.</div>');return}
+var h='<span class="badge b-free">Bo’sh</span><h3>Bu uy sotuvda</h3><div class="sub">Turini tanlang:</div>';
+PLANS.forEach(function(p,i){h+='<button class="btn plan p-'+p.k+'" data-i="'+i+'" type="button">'+p.name+'<span>'+money(p.min)+' – '+money(p.max)+' so’m</span></button>'});
+sheet(h);
+Array.prototype.forEach.call(document.querySelectorAll(".plan"),function(b){
+b.onclick=function(){showPay(c,PLANS[parseInt(b.getAttribute("data-i"),10)])};
+});
+}
+
+function showPay(c,plan){
+sheet('<h3>'+plan.name+' uy</h3><div class="sub">Nikingizni yozing, keyin to’lov summasi chiqadi.</div><input class="inp" id="bn" type="text" placeholder="Instagram nikingiz" autocapitalize="off" autocomplete="off"><div id="bm" style="font-size:13px;color:#ffb4a6;min-height:16px"></div><button class="btn" id="paid" type="button">Band qilish</button>');
+$("paid").onclick=function(){reserve(c,plan)};
+}
+
+function showPayInfo(nik,summa){
+var pl=planOf(summa);
+var cardHtml=CARD?'<div class="cardnum"><span>'+esc(CARD)+'</span><button class="btn alt" id="cp" type="button" style="width:auto;margin:0;padding:8px 12px">Nusxa</button></div><div class="sub">'+esc(OWNER)+'</div>':'<div class="sub">Karta raqami hali kiritilmagan.</div>';
+sheet('<span class="badge b-wait">'+(pl?esc(pl.name)+' · ':'')+'@'+esc(nik)+'</span><h3>'+money(summa)+' so’m</h3><div class="sub">Aynan shu summani 30 daqiqa ichida o’tkazing. Boshqa summa bo’lsa to’lov topilmaydi, 30 daqiqadan keyin uy bo’shaydi.</div>'+cardHtml+'<div id="bm" style="font-size:13px;color:#9fe0cf;min-height:16px"></div><button class="btn" id="sent" type="button">To’lov qildim</button>');
+if($("cp"))$("cp").onclick=function(){
+try{navigator.clipboard.writeText(CARD.replace(/\s/g,""));$("bm").textContent="Karta raqami nusxalandi."}catch(e){}
+};
+$("sent").onclick=function(){showSent(nik,summa)};
+}
+
+function showSent(nik,summa){
+var ig=INSTA?'<div class="sub">Chekni Instagramdagi <b>@'+esc(INSTA)+'</b> sahifasiga yuboring. Xabarga nikingiz (@'+esc(nik)+') va summani ('+money(summa)+' so’m) yozing.</div><a class="btn" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box" href="https://www.instagram.com/'+esc(INSTA)+'/" target="_blank" rel="noopener">Instagramni ochish</a>':'<div class="sub">Instagram sahifasi hali kiritilmagan.</div>';
+sheet('<span class="badge b-wait">To’lov tekshiriladi</span><h3>Chekni yuboring</h3>'+ig);
+}
+
+async function reserve(c,plan){
+var nik=clean($("bn").value),bm=$("bm");
+bm.style.color="#ffb4a6";
+if(!/^[a-z0-9._]{2,30}$/.test(nik)){bm.textContent="Nikni to’g’ri yozing.";return}
+if(users[nik]){bm.textContent="Bu nik allaqachon uy olgan.";return}
+if(near(c.lng,c.lat)){bm.textContent="Bu uy band bo’ldi.";return}
+var taken={};
+Object.keys(users).forEach(function(k){if(users[k].tur==="kutilmoqda"&&users[k].summa)taken[users[k].summa]=1});
+var summa=0;
+for(var t=0;t<100;t++){var x=plan.min+Math.floor(Math.random()*(plan.max-plan.min+1));if(!taken[x]){summa=x;break}}
+if(!summa){bm.textContent="Hozir band, birozdan keyin urinib ko’ring.";return}
+$("paid").disabled=true;
+try{
+var r=await fetch(SUPABASE_URL+"/rest/v1/uylar",{method:"POST",headers:Object.assign({Prefer:"return=representation"},H),body:JSON.stringify({nik:nik,lng:c.lng,lat:c.lat,kalit:key(c.lng,c.lat),tur:"kutilmoqda",summa:summa,geom:c.ring})});
+if(r.ok){
+var rows=await r.json();
+ROWS.push(rows[0]);
+add(rows[0]);
+updateCount();
+drawSold();
+showPayInfo(nik,summa);
+}else{
+await load();
+bm.textContent="Bu uy yoki nik band. Boshqasini tanlang.";
+$("paid").disabled=false;
+}
+}catch(e){bm.textContent="Xatolik. Qayta urinib ko’ring.";$("paid").disabled=false}
+}
+
+map.on("click",function(e){
+var fs=map.queryRenderedFeatures(e.point);
+var hs=fs.filter(function(x){return x.layer&&(x.layer.id==="roof"||x.layer.id.indexOf("body-")===0)})[0];
+if(hs&&hs.properties&&hs.properties.nik){showSold(hs.properties.nik);return}
+var f=fs.filter(function(x){return x.sourceLayer==="building"})[0];
+if(!f){closeSheet();return}
+var c=center(f.geometry);
+if(!c)return;
+var nik=near(c.lng,c.lat);
+if(nik)showSold(nik);else showFree(c);
+});
+
+async function search(){
+var q=$("q").value.trim();
+if(!q)return;
+var k=clean(q);
+if(users[k]){fly(users[k]);if(users[k].tur==="kutilmoqda"&&users[k].summa)showPayInfo(k,users[k].summa);else closeSheet();msg("Uy topildi.");return}
+msg("Qidiryapman…");
+try{
+var url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=uz&bounded=1&viewbox=72.20,40.88,72.50,40.70&q="+encodeURIComponent(q+", Andijon");
+var r=await fetch(url,{headers:{"Accept-Language":"uz"}});
+var a=await r.json();
+if(!a.length){msg("Topilmadi. Boshqacha yozing yoki xaritadan o’zingiz toping.");return}
+map.flyTo({center:[parseFloat(a[0].lon),parseFloat(a[0].lat)],zoom:18,pitch:60,speed:0.9});
+msg("Mana shu joy. Uyingizni bosing.");
+}catch(e){msg("Qidiruv ishlamadi. Xaritadan o’zingiz toping.")}
+}
+$("go").addEventListener("click",search);
+$("q").addEventListener("keydown",function(e){if(e.key==="Enter")search()});
+</script>
+</body>
+</html>
