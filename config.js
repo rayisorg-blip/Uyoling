@@ -1,7 +1,7 @@
 window.APP_CONFIG={
   url:"https://rfudhhjskhanctkffumq.supabase.co",
   key:"PASTE_PUBLISHABLE_KEY_HERE",
-  card:"8600 0000 0000 0000",
-  owner:"ISM FAMILIYA",
-  insta:"sizning_instagram"
+  card:"8616 8978 7728 6278",
+  owner:"Rustamov Muhammadzohid",
+  insta:"13_fazliddin"
 };
